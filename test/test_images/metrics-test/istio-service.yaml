@@ -1,0 +1,134 @@
+# Copyright 2024 The Knative Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: metrics-test
+  annotations:
+    serving.knative.openshift.io/enablePassthrough: "true"
+spec:
+  template:
+    metadata:
+      labels:
+        app: metrics-test
+      annotations:
+       # autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/target: "5"
+        autoscaling.knative.dev/class: "hpa.autoscaling.knative.dev"
+        autoscaling.knative.dev/metric: "istio_requests_total"
+        autoscaling.knative.dev/prometheus-address: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9092"
+        autoscaling.knative.dev/trigger-prometheus-auth-name: "keda-trigger-auth-prometheus"
+        autoscaling.knative.dev/trigger-prometheus-auth-modes: "bearer"
+        autoscaling.knative.dev/trigger-prometheus-auth-kind: "TriggerAuthentication"
+        autoscaling.knative.dev/prometheus-query: "sum(rate(istio_requests_total{namespace='test'}[1m]))"
+        sidecar.istio.io/inject: "true"
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "9096"
+        prometheus.io/scrape: "true"
+    spec:
+      containers:
+        - image: ko://knative.dev/autoscaler-keda/test/test_images/metrics-test/
+          imagePullPolicy: Always
+          ports:
+            - name: http1
+              containerPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-workload-access
+spec:
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: monitoring
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: enable-prometheus-metrics
+spec:
+  selector:
+    matchLabels:
+      app: metrics-test
+  metrics:
+    - providers:
+        - name: prometheus
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istiod-monitor
+spec:
+  targetLabels:
+    - app
+  selector:
+    matchLabels:
+      istio: pilot
+  endpoints:
+    - port: http-monitoring
+      interval: 30s
+      relabelings:
+        - action: replace
+          replacement: "<SMCP_NAME>-<SMCP_NAMESPACE>"
+          targetLabel: mesh_id
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: istio-proxies-monitor
+spec:
+  selector:
+    matchExpressions:
+      - key: istio-prometheus-ignore
+        operator: DoesNotExist
+  podMetricsEndpoints:
+    - path: /stats/prometheus
+      interval: 30s
+      relabelings:
+        - action: keep
+          sourceLabels: [__meta_kubernetes_pod_container_name]
+          regex: "istio-proxy"
+        - action: keep
+          sourceLabels: [__meta_kubernetes_pod_annotationpresent_prometheus_io_scrape]
+        - action: replace
+          regex: (\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+          replacement: '[$2]:$1'
+          sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_port,
+                         __meta_kubernetes_pod_ip]
+          targetLabel: __address__
+        - action: replace
+          regex: (\d+);((([0-9]+?)(\.|$)){4})
+          replacement: $2:$1
+          sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_port,
+                         __meta_kubernetes_pod_ip]
+          targetLabel: __address__
+        - action: labeldrop
+          regex: "__meta_kubernetes_pod_label_(.+)"
+        - sourceLabels: [__meta_kubernetes_namespace]
+          action: replace
+          targetLabel: namespace
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          action: replace
+          targetLabel: pod_name
+        - action: replace
+          replacement: "<SMCP_NAME>-<SMCP_NAMESPACE>"
+          targetLabel: mesh_id

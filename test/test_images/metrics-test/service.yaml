@@ -22,16 +22,16 @@ spec:
       labels:
         app: metrics-test
       annotations:
-        autoscaling.knative.dev/minScale: "1"
+#        autoscaling.knative.dev/minScale: "1"
         autoscaling.knative.dev/maxScale: "10"
-        autoscaling.knative.dev/target: "2"
+        autoscaling.knative.dev/target: "1"
         autoscaling.knative.dev/class: "hpa.autoscaling.knative.dev"
-        autoscaling.knative.dev/metric: "http_requests_total"
-        autoscaling.knative.dev/prometheus-address: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9092"
-        autoscaling.knative.dev/trigger-prometheus-auth-name: "keda-trigger-auth-prometheus"
-        autoscaling.knative.dev/trigger-prometheus-auth-modes: "bearer"
-        autoscaling.knative.dev/trigger-prometheus-auth-kind: "ClusterTriggerAuthentication"
-        autoscaling.knative.dev/prometheus-query: "sum(rate(http_requests_total{}[1m]))"
+        autoscaling.knative.dev/metric: "envoy_cluster_upstream_rq_active"
+        autoscaling.knative.dev/prometheus-query: "sum(avg_over_time(envoy_cluster_upstream_rq_active{envoy_cluster_name='test/metrics-test-00001'}[1m]))"
+#        autoscaling.knative.dev/prometheus-address: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9092"
+#        autoscaling.knative.dev/trigger-prometheus-auth-name: "keda-trigger-auth-prometheus"
+#        autoscaling.knative.dev/trigger-prometheus-auth-modes: "bearer"
+#        autoscaling.knative.dev/trigger-prometheus-auth-kind: "TriggerAuthentication"
     spec:
       containers:
         - image: ko://knative.dev/autoscaler-keda/test/test_images/metrics-test/

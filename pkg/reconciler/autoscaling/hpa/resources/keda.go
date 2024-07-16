@@ -147,12 +147,15 @@ func DesiredScaledObject(pa *autoscalingv1alpha1.PodAutoscaler, config *autoscal
 
 func getDefaultPrometheusTrigger(annotations map[string]string, address string, query string, threshold string, ns string) (*v1alpha1.ScaleTriggers, error) {
 	trigger := v1alpha1.ScaleTriggers{
-		Type: "prometheus",
+		Type:       "prometheus",
+		MetricType: autoscalingv2.ValueMetricType,
 		Metadata: map[string]string{
-			"serverAddress": address,
-			"query":         query,
-			"threshold":     threshold,
-			"namespace":     ns,
+
+			"serverAddress":       address,
+			"query":               query,
+			"threshold":           threshold,
+			"namespace":           ns,
+			"activationThreshold": "1",
 		}}
 
 	var ref *v1alpha1.AuthenticationRef

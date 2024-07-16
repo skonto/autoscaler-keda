@@ -98,11 +98,13 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, pa *autoscalingv1alpha1.
 		return nil // skip wait to be triggered by hpa events eg. creation
 	}
 
-	if scaledObj.Spec.MinReplicaCount != nil {
+	if scaledObj.Spec.MinReplicaCount != nil && *scaledObj.Spec.MinReplicaCount > 0 {
 		if hpa.Status.DesiredReplicas < *scaledObj.Spec.MinReplicaCount {
 			return nil // skip wait to be triggered by hpa events
 		}
-	}
+	} // else if hpa.Status.DesiredReplicas == 0 {
+	//	return nil // skip wait to be triggered by hpa events
+	//}
 
 	sks, err := c.ReconcileSKS(ctx, pa, nv1alpha1.SKSOperationModeServe, allActivators)
 	if err != nil {
@@ -121,7 +123,7 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, pa *autoscalingv1alpha1.
 		// as initialized until the current replicas are >= the min-scale value.
 		if !pa.Status.IsScaleTargetInitialized() {
 			ms := activeThreshold(ctx, pa)
-			if hpa.Status.CurrentReplicas >= int32(ms) {
+			if hpa.Status.CurrentReplicas >= int32(ms) || hpa.Status.CurrentReplicas == 0 {
 				pa.Status.MarkScaleTargetInitialized()
 			}
 		}
